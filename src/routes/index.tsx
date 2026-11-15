@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Home, History, Trophy, Wallet, Shield, X, Pencil, Check, Trash2 } from "lucide-react";
+import { Home, History, Trophy, Wallet, Shield, X, Pencil, Check, Trash2, ImagePlus } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -24,7 +24,7 @@ const METHODS: Method[] = [
 ];
 const SUMMARY = METHODS.map((m) => ({ name: m.name, ids: [m.id] }));
 
-type Tx = { id: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number; code: string; site: string };
+type Tx = { id: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number; code: string; site: string; img?: string };
 const SURVEY_SITES = ["TapResearch", "Topsurvey", "PrimeOpinion", "Heycash", "Five survey", "Heypiggy", "Nicesurvey", "Surveystreak", "Eureka", "Other"];
 type Device = { id: string; kind: string; label: string; expiry: number };
 type State = { txs: Tx[]; devices: Device[]; paidOut: number; rates?: Record<string, number> };
@@ -80,12 +80,12 @@ export function App() {
     };
   }, [s]);
 
-  const upsertTx = (method: Method, d: { usd: number; code: string; site: string }, edit?: Tx) =>
+  const upsertTx = (method: Method, d: { usd: number; code: string; site: string; img: string }, edit?: Tx) =>
     setS((p) => ({
       ...p,
       txs: edit
-        ? p.txs.map((t) => (t.id === edit.id ? { ...t, usd: d.usd, code: d.code, site: d.site } : t))
-        : [{ id: crypto.randomUUID(), method: method.id, usd: d.usd, code: d.code, site: d.site, rate: method.rate, status: "pending", paid: false, at: Date.now() }, ...p.txs],
+        ? p.txs.map((t) => (t.id === edit.id ? { ...t, usd: d.usd, code: d.code, site: d.site, img: d.img } : t))
+        : [{ id: crypto.randomUUID(), method: method.id, usd: d.usd, code: d.code, site: d.site, img: d.img, rate: method.rate, status: "pending", paid: false, at: Date.now() }, ...p.txs],
     }));
   const approve = (id: string) => setS((p) => ({ ...p, txs: p.txs.map((t) => (t.id === id ? { ...t, status: "approved" } : t)) }));
   const remove = (id: string) => setS((p) => ({ ...p, txs: p.txs.filter((t) => t.id !== id) }));
@@ -265,6 +265,7 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
               <p className="truncate text-xs font-semibold text-primary">🏷️ {t.site || "—"}</p>
               <p className="truncate font-mono text-[11px] text-muted-foreground">🎫 {t.code || "—"}</p>
               <p className="font-bn truncate text-xs text-muted-foreground">{fmtBn(t.at)}</p>
+              <ProofButton img={t.img} />
             </div>
             <div className="shrink-0 text-right">
               <p className="font-bold">${t.usd.toFixed(2)}</p>
@@ -281,13 +282,55 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
     </div>
   );
 }
-function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | undefined; onClose: () => void; onSubmit: (d: { usd: number; code: string; site: string }) => void }) {
+function ProofButton({ img }: { img?: string | undefined }) {
+  const [open, setOpen] = useState(false);
+  if (!img) return null;
+  return (
+    <>
+      <button onClick={() => setOpen(true)} aria-label="View Screenshot" className="mt-1 flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-semibold text-primary active:scale-95">
+        <img src={img} alt="" className="h-6 w-6 rounded object-cover" /> View Screenshot
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/80 p-4" onClick={() => setOpen(false)}>
+          <img src={img} alt="Payment proof screenshot" className="max-h-[85vh] max-w-full rounded-2xl object-contain" />
+          <button aria-label="Close" onClick={() => setOpen(false)} className="absolute right-4 top-4 rounded-full bg-card p-2"><X size={18} /></button>
+        </div>
+      )}
+    </>
+  );
+}
+function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | undefined; onClose: () => void; onSubmit: (d: { usd: number; code: string; site: string; img: string }) => void }) {
   const [v, setV] = useState(edit ? String(edit.usd) : "");
   const [code, setCode] = useState(edit?.code ?? "");
   const [site, setSite] = useState(edit?.site ?? "");
+  const [img, setImg] = useState(edit?.img ?? "");
   const n = parseFloat(v);
   const usdOk = n > 0 && n < 100000;
   const valid = usdOk && code.trim() !== "" && site !== "";
+  const pickImage = (f?: File) => {
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      const url = String(r.result);
+      let ctx: CanvasRenderingContext2D | null = null;
+      try { ctx = document.createElement("canvas").getContext("2d"); } catch { ctx = null; }
+      if (!ctx) { setImg(url); return; }
+      const im = new Image();
+      im.onload = () => {
+        try {
+          const sc = Math.min(1, 900 / Math.max(im.width, im.height));
+          const c = document.createElement("canvas");
+          c.width = Math.max(1, Math.round(im.width * sc));
+          c.height = Math.max(1, Math.round(im.height * sc));
+          c.getContext("2d")?.drawImage(im, 0, 0, c.width, c.height);
+          setImg(c.toDataURL("image/jpeg", 0.72));
+        } catch { setImg(url); }
+      };
+      im.onerror = () => setImg(url);
+      im.src = url;
+    };
+    r.readAsDataURL(f);
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/40 p-4 sm:items-center" onClick={onClose}>
       <div className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-3xl bg-popover p-6" onClick={(e) => e.stopPropagation()}>
@@ -310,7 +353,18 @@ function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | un
           {SURVEY_SITES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
 
-        <button disabled={!valid} onClick={() => onSubmit({ usd: Math.round(n * 100) / 100, code: code.trim(), site })} className="bg-grad-purple mt-5 w-full rounded-2xl py-3 font-bold text-on-gradient disabled:opacity-40">
+        <label htmlFor="amt-img" className="label-caps mt-4 block text-muted-foreground">Upload Screenshot / Proof Image</label>
+        <input id="amt-img" type="file" accept="image/*" onChange={(e) => pickImage(e.target.files?.[0])} className="mt-1 w-full rounded-2xl border bg-card px-4 py-3 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-primary file:px-3 file:py-1 file:text-xs file:font-bold file:text-primary-foreground" />
+        {img ? (
+          <div className="mt-2 flex items-center gap-3">
+            <img src={img} alt="Proof preview" className="h-20 w-20 rounded-xl border object-cover" />
+            <button onClick={() => setImg("")} className="flex items-center gap-1 text-xs font-semibold text-destructive"><Trash2 size={12} /> Remove</button>
+          </div>
+        ) : (
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground"><ImagePlus size={12} /> Optional — gallery or camera photo</p>
+        )}
+
+        <button disabled={!valid} onClick={() => onSubmit({ usd: Math.round(n * 100) / 100, code: code.trim(), site, img })} className="bg-grad-purple mt-5 w-full rounded-2xl py-3 font-bold text-on-gradient disabled:opacity-40">
           {edit ? "Save" : "Submit (Pending)"}
         </button>
       </div>
@@ -342,6 +396,7 @@ function AdminPanel({ s, setS, calc, approve, remove, markPaid }: any) {
             </div>
             <p className="truncate text-xs font-semibold text-primary">🏷️ {t.site || "—"}</p>
             <p className="truncate font-mono text-[11px] text-muted-foreground">🎫 {t.code || "—"}</p>
+            <ProofButton img={t.img} />
           </div>
         ))}
       </div>
