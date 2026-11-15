@@ -8,7 +8,7 @@ export const Route = createFileRoute("/")({
       { title: "ডলার হিসাব — USD to BDT Earnings Tracker" },
       { name: "description", content: "Telegram Mini App to track USD earnings converted to BDT with pending, approved and paid-out balances." },
       { property: "og:title", content: "ডলার হিসাব — Earnings Tracker" },
-      { property: "og:description", content: "Track Amazon, PayPal, Visa, Walmart, Apple and ACH earnings in BDT." },
+      { property: "og:description", content: "Track Amazon, Apple and ACH earnings in BDT." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
