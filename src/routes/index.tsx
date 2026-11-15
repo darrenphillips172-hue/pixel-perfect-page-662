@@ -48,7 +48,7 @@ function useTelegramUser() {
   return u;
 }
 
-function App() {
+export function App() {
   const user = useTelegramUser();
   const [s, setS] = useState<State>(empty);
   const [loaded, setLoaded] = useState(false);
