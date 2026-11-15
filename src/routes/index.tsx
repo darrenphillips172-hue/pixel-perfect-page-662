@@ -24,7 +24,8 @@ const METHODS: Method[] = [
 ];
 const SUMMARY = METHODS.map((m) => ({ name: m.name, ids: [m.id] }));
 
-type Tx = { id: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number };
+type Tx = { id: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number; code: string; site: string };
+const SURVEY_SITES = ["Swagbucks", "Freecash", "Prime Opinion", "Five Surveys", "HeyCash", "Qmee", "Survey Junkie", "InboxDollars", "Branded Surveys", "Other"];
 type Device = { id: string; kind: string; label: string; expiry: number };
 type State = { txs: Tx[]; devices: Device[]; paidOut: number; rates?: Record<string, number> };
 const KEY = "dollar-hisab-v2";
@@ -47,7 +48,7 @@ function useTelegramUser() {
   return u;
 }
 
-function App() {
+export function App() {
   const user = useTelegramUser();
   const [s, setS] = useState<State>(empty);
   const [loaded, setLoaded] = useState(false);
@@ -79,12 +80,12 @@ function App() {
     };
   }, [s]);
 
-  const upsertTx = (method: Method, usd: number, edit?: Tx) =>
+  const upsertTx = (method: Method, d: { usd: number; code: string; site: string }, edit?: Tx) =>
     setS((p) => ({
       ...p,
       txs: edit
-        ? p.txs.map((t) => (t.id === edit.id ? { ...t, usd } : t))
-        : [{ id: crypto.randomUUID(), method: method.id, usd, rate: method.rate, status: "pending", paid: false, at: Date.now() }, ...p.txs],
+        ? p.txs.map((t) => (t.id === edit.id ? { ...t, usd: d.usd, code: d.code, site: d.site } : t))
+        : [{ id: crypto.randomUUID(), method: method.id, usd: d.usd, code: d.code, site: d.site, rate: method.rate, status: "pending", paid: false, at: Date.now() }, ...p.txs],
     }));
   const approve = (id: string) => setS((p) => ({ ...p, txs: p.txs.map((t) => (t.id === id ? { ...t, status: "approved" } : t)) }));
   const remove = (id: string) => setS((p) => ({ ...p, txs: p.txs.filter((t) => t.id !== id) }));
@@ -181,7 +182,7 @@ function App() {
         ))}
       </nav>
 
-      {modal && <AmountModal m={modal.method} edit={modal.edit} onClose={() => setModal(null)} onSubmit={(u) => { upsertTx(modal.method, u, modal.edit); setModal(null); }} />}
+      {modal && <AmountModal m={modal.method} edit={modal.edit} onClose={() => setModal(null)} onSubmit={(d) => { upsertTx(modal.method, d, modal.edit); setModal(null); }} />}
     </div>
   );
 }
@@ -261,6 +262,8 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
             <span className="text-2xl">{m.icon}</span>
             <div className="min-w-0 flex-1">
               <p className="truncate font-semibold">{m.name}</p>
+              <p className="truncate text-xs font-semibold text-primary">🏷️ {t.site || "—"}</p>
+              <p className="truncate font-mono text-[11px] text-muted-foreground">🎫 {t.code || "—"}</p>
               <p className="font-bn truncate text-xs text-muted-foreground">{fmtBn(t.at)}</p>
             </div>
             <div className="shrink-0 text-right">
@@ -278,21 +281,36 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
     </div>
   );
 }
-function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | undefined; onClose: () => void; onSubmit: (u: number) => void }) {
+function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | undefined; onClose: () => void; onSubmit: (d: { usd: number; code: string; site: string }) => void }) {
   const [v, setV] = useState(edit ? String(edit.usd) : "");
+  const [code, setCode] = useState(edit?.code ?? "");
+  const [site, setSite] = useState(edit?.site ?? "");
   const n = parseFloat(v);
-  const valid = n > 0 && n < 100000;
+  const usdOk = n > 0 && n < 100000;
+  const valid = usdOk && code.trim() !== "" && site !== "";
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/40 p-4 sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-3xl bg-popover p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-3xl bg-popover p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold">{m.icon} {edit ? "Edit" : "Add"} {m.name}</h3>
           <button onClick={onClose} aria-label="Close"><X /></button>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">Rate ×{m.rate} BDT{m.sub ? ` · ${m.sub}` : ""}</p>
-        <input autoFocus type="number" inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} placeholder="USD amount" className="mt-4 w-full rounded-2xl border bg-card px-4 py-3 text-2xl font-bold outline-none focus:ring-2 focus:ring-ring" />
-        <p className="mt-2 text-sm">≈ <b>{valid ? tk(n * m.rate) : "৳0"}</b></p>
-        <button disabled={!valid} onClick={() => onSubmit(Math.round(n * 100) / 100)} className="bg-grad-purple mt-4 w-full rounded-2xl py-3 font-bold text-on-gradient disabled:opacity-40">
+
+        <label htmlFor="amt-usd" className="label-caps mt-4 block text-muted-foreground">Dollar Amount ($)</label>
+        <input id="amt-usd" autoFocus type="number" inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} placeholder="USD amount" className="mt-1 w-full rounded-2xl border bg-card px-4 py-3 text-2xl font-bold outline-none focus:ring-2 focus:ring-ring" />
+        <p className="mt-2 text-sm">≈ <b>{usdOk ? tk(n * m.rate) : "৳0"}</b></p>
+
+        <label htmlFor="amt-code" className="label-caps mt-4 block text-muted-foreground">Code / Gift Card Code</label>
+        <input id="amt-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Paste gift card or payout code" className="mt-1 w-full rounded-2xl border bg-card px-4 py-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring" />
+
+        <label htmlFor="amt-site" className="label-caps mt-4 block text-muted-foreground">Survey Site Name</label>
+        <select id="amt-site" value={site} onChange={(e) => setSite(e.target.value)} className="mt-1 w-full rounded-2xl border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-ring">
+          <option value="">Select survey site</option>
+          {SURVEY_SITES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        <button disabled={!valid} onClick={() => onSubmit({ usd: Math.round(n * 100) / 100, code: code.trim(), site })} className="bg-grad-purple mt-5 w-full rounded-2xl py-3 font-bold text-on-gradient disabled:opacity-40">
           {edit ? "Save" : "Submit (Pending)"}
         </button>
       </div>
@@ -314,12 +332,16 @@ function AdminPanel({ s, setS, calc, approve, remove, markPaid }: any) {
       <div>
         <p className="mb-2 text-sm font-semibold">Pending ({calc.pendingList.length})</p>
         {calc.pendingList.map((t: Tx) => (
-          <div key={t.id} className="flex items-center justify-between border-b py-2 text-sm">
-            <span>{METHODS.find((m) => m.id === t.method)?.name} · ${t.usd}</span>
-            <span className="flex gap-2">
-              <button onClick={() => approve(t.id)} className="rounded-full bg-success p-1.5 text-on-gradient" aria-label="Approve"><Check size={14} /></button>
-              <button onClick={() => remove(t.id)} className="rounded-full bg-destructive p-1.5 text-on-gradient" aria-label="Delete"><Trash2 size={14} /></button>
-            </span>
+          <div key={t.id} className="border-b py-2 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate font-semibold">{METHODS.find((m) => m.id === t.method)?.name} · ${t.usd}</span>
+              <span className="flex shrink-0 gap-2">
+                <button onClick={() => approve(t.id)} className="rounded-full bg-success p-1.5 text-on-gradient" aria-label="Approve"><Check size={14} /></button>
+                <button onClick={() => remove(t.id)} className="rounded-full bg-destructive p-1.5 text-on-gradient" aria-label="Delete"><Trash2 size={14} /></button>
+              </span>
+            </div>
+            <p className="truncate text-xs font-semibold text-primary">🏷️ {t.site || "—"}</p>
+            <p className="truncate font-mono text-[11px] text-muted-foreground">🎫 {t.code || "—"}</p>
           </div>
         ))}
       </div>
