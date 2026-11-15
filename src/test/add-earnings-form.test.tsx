@@ -71,16 +71,17 @@ describe("Add Earnings form", () => {
     fireEvent.change(screen.getByLabelText("Survey Site Name"), { target: { value: "Freecash" } });
     fireEvent.click(screen.getByRole("button", { name: "Submit (Pending)" }));
 
-    expect(screen.getByText("Freecash")).toBeInTheDocument();
+    expect(screen.getByText(/Freecash/)).toBeInTheDocument();
     expect(screen.getByText(/APPLE-77Q/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "History" }));
-    expect(screen.getByText("Freecash")).toBeInTheDocument();
+    expect(screen.getByText(/Freecash/)).toBeInTheDocument();
     expect(screen.getByText(/APPLE-77Q/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "History" })); // back to home tab is not the nav; open admin instead
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
     fireEvent.click(screen.getByRole("button", { name: "Admin" }));
-    expect(screen.getByText(/APPLE-77Q/)).toBeInTheDocument();
-    expect(screen.getByText("Freecash")).toBeInTheDocument();
+    const panel = screen.getByText("🛡️ Admin Panel").closest("div")!;
+    expect(within(panel).getByText(/APPLE-77Q/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Freecash/)).toBeInTheDocument();
   });
 });
