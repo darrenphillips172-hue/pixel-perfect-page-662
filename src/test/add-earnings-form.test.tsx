@@ -28,7 +28,7 @@ describe("Add Earnings form", () => {
     fireEvent.change(screen.getByLabelText("Code / Gift Card Code"), { target: { value: "AMZN-9F3K" } });
     expect(submit).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Survey Site Name"), { target: { value: "Swagbucks" } });
+    fireEvent.change(screen.getByLabelText("Survey Site Name"), { target: { value: "TapResearch" } });
     expect(submit).toBeEnabled();
 
     fireEvent.click(submit);
@@ -37,7 +37,7 @@ describe("Add Earnings form", () => {
       method: "amazon",
       usd: 5,
       code: "AMZN-9F3K",
-      site: "Swagbucks",
+      site: "TapResearch",
       status: "pending",
     });
   });
@@ -50,15 +50,15 @@ describe("Add Earnings form", () => {
     const options = Array.from(site.options).map((o) => o.value).filter(Boolean);
 
     expect(options).toEqual([
-      "Swagbucks",
-      "Freecash",
-      "Prime Opinion",
-      "Five Surveys",
-      "HeyCash",
-      "Qmee",
-      "Survey Junkie",
-      "InboxDollars",
-      "Branded Surveys",
+      "TapResearch",
+      "Topsurvey",
+      "PrimeOpinion",
+      "Heycash",
+      "Five survey",
+      "Heypiggy",
+      "Nicesurvey",
+      "Surveystreak",
+      "Eureka",
       "Other",
     ]);
   });
@@ -68,20 +68,20 @@ describe("Add Earnings form", () => {
     openAmazonForm();
     fireEvent.change(screen.getByLabelText("Dollar Amount ($)"), { target: { value: "10" } });
     fireEvent.change(screen.getByLabelText("Code / Gift Card Code"), { target: { value: "APPLE-77Q" } });
-    fireEvent.change(screen.getByLabelText("Survey Site Name"), { target: { value: "Freecash" } });
+    fireEvent.change(screen.getByLabelText("Survey Site Name"), { target: { value: "Heypiggy" } });
     fireEvent.click(screen.getByRole("button", { name: "Submit (Pending)" }));
 
-    expect(screen.getByText(/Freecash/)).toBeInTheDocument();
+    expect(screen.getByText(/Heypiggy/)).toBeInTheDocument();
     expect(screen.getByText(/APPLE-77Q/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "History" }));
-    expect(screen.getByText(/Freecash/)).toBeInTheDocument();
+    expect(screen.getByText(/Heypiggy/)).toBeInTheDocument();
     expect(screen.getByText(/APPLE-77Q/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Home" }));
     fireEvent.click(screen.getByRole("button", { name: "Admin" }));
     const panel = screen.getByText("🛡️ Admin Panel").closest("div")!;
     expect(within(panel).getByText(/APPLE-77Q/)).toBeInTheDocument();
-    expect(within(panel).getByText(/Freecash/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Heypiggy/)).toBeInTheDocument();
   });
 });
