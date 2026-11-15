@@ -8,12 +8,11 @@ export const WEEKLY_BONUS_BDT = 50;
 export async function sendGroup(text: string) {
   const token = process.env["TELEGRAM_BOT_TOKEN"];
   const chat = process.env["TELEGRAM_GROUP_ID"];
-  const thread = process.env["TELEGRAM_THREAD_ID"];
   if (!token || !chat) throw new Error("Telegram group not configured");
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chat, ...(thread ? { message_thread_id: Number(thread) } : {}), text }),
+    body: JSON.stringify({ chat_id: chat, text }),
   });
   const body = await res.text();
   if (!res.ok) throw new Error(`Telegram error [${res.status}]: ${body}`);
