@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Home, History, Trophy, Wallet, Shield, X, Pencil, Check, Trash2 } from "lucide-react";
+import { Home, History, Trophy, Wallet, Shield, X, Pencil, Check, Trash2, ImagePlus } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -24,7 +24,7 @@ const METHODS: Method[] = [
 ];
 const SUMMARY = METHODS.map((m) => ({ name: m.name, ids: [m.id] }));
 
-type Tx = { id: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number; code: string; site: string };
+type Tx = { id: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number; code: string; site: string; img?: string };
 const SURVEY_SITES = ["TapResearch", "Topsurvey", "PrimeOpinion", "Heycash", "Five survey", "Heypiggy", "Nicesurvey", "Surveystreak", "Eureka", "Other"];
 type Device = { id: string; kind: string; label: string; expiry: number };
 type State = { txs: Tx[]; devices: Device[]; paidOut: number; rates?: Record<string, number> };
@@ -80,12 +80,12 @@ export function App() {
     };
   }, [s]);
 
-  const upsertTx = (method: Method, d: { usd: number; code: string; site: string }, edit?: Tx) =>
+  const upsertTx = (method: Method, d: { usd: number; code: string; site: string; img: string }, edit?: Tx) =>
     setS((p) => ({
       ...p,
       txs: edit
-        ? p.txs.map((t) => (t.id === edit.id ? { ...t, usd: d.usd, code: d.code, site: d.site } : t))
-        : [{ id: crypto.randomUUID(), method: method.id, usd: d.usd, code: d.code, site: d.site, rate: method.rate, status: "pending", paid: false, at: Date.now() }, ...p.txs],
+        ? p.txs.map((t) => (t.id === edit.id ? { ...t, usd: d.usd, code: d.code, site: d.site, img: d.img } : t))
+        : [{ id: crypto.randomUUID(), method: method.id, usd: d.usd, code: d.code, site: d.site, img: d.img, rate: method.rate, status: "pending", paid: false, at: Date.now() }, ...p.txs],
     }));
   const approve = (id: string) => setS((p) => ({ ...p, txs: p.txs.map((t) => (t.id === id ? { ...t, status: "approved" } : t)) }));
   const remove = (id: string) => setS((p) => ({ ...p, txs: p.txs.filter((t) => t.id !== id) }));
