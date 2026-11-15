@@ -25,7 +25,7 @@ const METHODS: Method[] = [
 const SUMMARY = METHODS.map((m) => ({ name: m.name, ids: [m.id] }));
 
 type Tx = { id: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number; code: string; site: string };
-const SURVEY_SITES = ["Swagbucks", "Freecash", "Prime Opinion", "Five Surveys", "HeyCash", "Qmee", "Survey Junkie", "InboxDollars", "Branded Surveys", "Other"];
+const SURVEY_SITES = ["TapResearch", "Topsurvey", "PrimeOpinion", "Heycash", "Five survey", "Heypiggy", "Nicesurvey", "Surveystreak", "Eureka", "Other"];
 type Device = { id: string; kind: string; label: string; expiry: number };
 type State = { txs: Tx[]; devices: Device[]; paidOut: number; rates?: Record<string, number> };
 const KEY = "dollar-hisab-v2";
