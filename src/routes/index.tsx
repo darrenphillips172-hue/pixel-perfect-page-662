@@ -281,21 +281,36 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
     </div>
   );
 }
-function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | undefined; onClose: () => void; onSubmit: (u: number) => void }) {
+function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | undefined; onClose: () => void; onSubmit: (d: { usd: number; code: string; site: string }) => void }) {
   const [v, setV] = useState(edit ? String(edit.usd) : "");
+  const [code, setCode] = useState(edit?.code ?? "");
+  const [site, setSite] = useState(edit?.site ?? "");
   const n = parseFloat(v);
-  const valid = n > 0 && n < 100000;
+  const usdOk = n > 0 && n < 100000;
+  const valid = usdOk && code.trim() !== "" && site !== "";
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-foreground/40 p-4 sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-3xl bg-popover p-6" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-3xl bg-popover p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold">{m.icon} {edit ? "Edit" : "Add"} {m.name}</h3>
           <button onClick={onClose} aria-label="Close"><X /></button>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">Rate ×{m.rate} BDT{m.sub ? ` · ${m.sub}` : ""}</p>
-        <input autoFocus type="number" inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} placeholder="USD amount" className="mt-4 w-full rounded-2xl border bg-card px-4 py-3 text-2xl font-bold outline-none focus:ring-2 focus:ring-ring" />
-        <p className="mt-2 text-sm">≈ <b>{valid ? tk(n * m.rate) : "৳0"}</b></p>
-        <button disabled={!valid} onClick={() => onSubmit(Math.round(n * 100) / 100)} className="bg-grad-purple mt-4 w-full rounded-2xl py-3 font-bold text-on-gradient disabled:opacity-40">
+
+        <label htmlFor="amt-usd" className="label-caps mt-4 block text-muted-foreground">Dollar Amount ($)</label>
+        <input id="amt-usd" autoFocus type="number" inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} placeholder="USD amount" className="mt-1 w-full rounded-2xl border bg-card px-4 py-3 text-2xl font-bold outline-none focus:ring-2 focus:ring-ring" />
+        <p className="mt-2 text-sm">≈ <b>{usdOk ? tk(n * m.rate) : "৳0"}</b></p>
+
+        <label htmlFor="amt-code" className="label-caps mt-4 block text-muted-foreground">Code / Gift Card Code</label>
+        <input id="amt-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Paste gift card or payout code" className="mt-1 w-full rounded-2xl border bg-card px-4 py-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring" />
+
+        <label htmlFor="amt-site" className="label-caps mt-4 block text-muted-foreground">Survey Site Name</label>
+        <select id="amt-site" value={site} onChange={(e) => setSite(e.target.value)} className="mt-1 w-full rounded-2xl border bg-card px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-ring">
+          <option value="">Select survey site</option>
+          {SURVEY_SITES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        <button disabled={!valid} onClick={() => onSubmit({ usd: Math.round(n * 100) / 100, code: code.trim(), site })} className="bg-grad-purple mt-5 w-full rounded-2xl py-3 font-bold text-on-gradient disabled:opacity-40">
           {edit ? "Save" : "Submit (Pending)"}
         </button>
       </div>
