@@ -10,33 +10,44 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicJobsWeeklyLeaderboardRouteImport } from './routes/api/public/jobs/weekly-leaderboard'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicJobsWeeklyLeaderboardRoute =
+  ApiPublicJobsWeeklyLeaderboardRouteImport.update({
+    id: '/api/public/jobs/weekly-leaderboard',
+    path: '/api/public/jobs/weekly-leaderboard',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/public/jobs/weekly-leaderboard': typeof ApiPublicJobsWeeklyLeaderboardRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/public/jobs/weekly-leaderboard': typeof ApiPublicJobsWeeklyLeaderboardRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/public/jobs/weekly-leaderboard': typeof ApiPublicJobsWeeklyLeaderboardRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/api/public/jobs/weekly-leaderboard'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/public/jobs/weekly-leaderboard'
+  id: '__root__' | '/' | '/api/public/jobs/weekly-leaderboard'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiPublicJobsWeeklyLeaderboardRoute: typeof ApiPublicJobsWeeklyLeaderboardRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +59,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/jobs/weekly-leaderboard': {
+      id: '/api/public/jobs/weekly-leaderboard'
+      path: '/api/public/jobs/weekly-leaderboard'
+      fullPath: '/api/public/jobs/weekly-leaderboard'
+      preLoaderRoute: typeof ApiPublicJobsWeeklyLeaderboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiPublicJobsWeeklyLeaderboardRoute: ApiPublicJobsWeeklyLeaderboardRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
