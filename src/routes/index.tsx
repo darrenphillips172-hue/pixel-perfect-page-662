@@ -343,7 +343,7 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
   return (
     <div className="space-y-2">
       {txs.map((t) => {
-        const m = METHODS.find((x) => x.id === t.method);
+        const m = METHODS.find((x) => x.id === t.method) ?? (t.method === "bonus" ? { icon: "🎁", name: "Weekly Bonus" } : null);
         if (!m) return null;
         return (
           <div key={t.id} className="card-soft flex items-center gap-3 p-4">
@@ -356,7 +356,7 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
               <ProofButton img={t.img} />
             </div>
             <div className="shrink-0 text-right">
-              <p className="font-bold">${t.usd.toFixed(2)}</p>
+              <p className="font-bold">{t.method === "bonus" ? tk(t.usd * t.rate) : `$${t.usd.toFixed(2)}`}</p>
               <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${t.status === "pending" ? "bg-warning/20 text-warning" : "bg-success/20 text-success"}`}>
                 {t.paid ? "PAID" : t.status.toUpperCase()}
               </span>
