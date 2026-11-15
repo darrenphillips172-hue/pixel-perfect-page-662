@@ -103,6 +103,7 @@ export type Database = {
           id: string
           img_path: string | null
           method: string
+          notified: boolean
           paid: boolean
           rate: number
           site: string
@@ -117,6 +118,7 @@ export type Database = {
           id?: string
           img_path?: string | null
           method: string
+          notified?: boolean
           paid?: boolean
           rate?: number
           site: string
@@ -131,6 +133,7 @@ export type Database = {
           id?: string
           img_path?: string | null
           method?: string
+          notified?: boolean
           paid?: boolean
           rate?: number
           site?: string

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { telegramSignIn } from "@/lib/telegram-auth.functions";
+import { notifyNewEarning, sendWeeklyLeaderboard } from "@/lib/notify.functions";
 import { Home, History, Trophy, Wallet, Shield, X, Pencil, Check, Trash2, ImagePlus } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -124,7 +125,7 @@ export function App() {
     const allRunning = s.txs.filter((t) => t.status === "approved" && !t.paid).reduce((a, t) => a + bdt(t), 0);
     return {
       running: running.reduce((a, t) => a + bdt(t), 0),
-      runningUsd: running.reduce((a, t) => a + t.usd, 0),
+      runningUsd: running.filter((t) => t.method !== "bonus").reduce((a, t) => a + t.usd, 0),
       pending: pending.reduce((a, t) => a + bdt(t), 0),
       lifetime: appr.reduce((a, t) => a + bdt(t), 0),
       appr, pendingList: pending, allPending, allRunning,
@@ -145,11 +146,18 @@ export function App() {
     const body = { usd: d.usd, code: d.code, site: d.site, img_path };
     const r = edit
       ? await supabase.from("transactions").update(body).eq("id", edit.id)
-      : await supabase.from("transactions").insert({ ...body, method: method.id, user_id: user.uid! });
-    if (!fail(r.error)) load();
+      : await supabase.from("transactions").insert({ ...body, method: method.id, user_id: user.uid! }).select("id").single();
+    if (fail(r.error)) return;
+    if (!edit && r.data && "id" in r.data) notifyNewEarning({ data: { txId: (r.data as { id: string }).id } }).catch((e) => console.error("Group notify failed", e));
+    load();
   };
   const approve = async (id: string) => { const r = await supabase.from("transactions").update({ status: "approved" }).eq("id", id); if (!fail(r.error)) load(); };
   const remove = async (id: string) => { const r = await supabase.from("transactions").delete().eq("id", id); if (!fail(r.error)) load(); };
+  const weekly = async () => {
+    if (!confirm("Send weekly leaderboard and add ৳50 bonus to the top 2?")) return;
+    try { const r = await sendWeeklyLeaderboard(); alert(`Sent ✅ · bonus added to ${r.bonusAdded} user(s)`); load(); }
+    catch (e) { alert((e as Error).message); }
+  };
   const markPaid = async () => { const r = await supabase.rpc("mark_all_paid"); if (!fail(r.error)) load(); };
   const setRate = async (method: string, rate: number) => { setS((p) => ({ ...p, rates: { ...p.rates, [method]: rate } })); await supabase.from("rates").upsert({ method, rate }); };
   const addDevice = async (kind: string, label: string, days: number) => { const r = await supabase.from("devices").insert({ kind, label, expiry: new Date(Date.now() + days * 864e5).toISOString() }); if (!fail(r.error)) load(); };
@@ -176,7 +184,7 @@ export function App() {
       </header>
       <p className="px-5 pt-3 text-xs text-muted-foreground">👋 {user.name}{user.tgId ? ` · ID ${user.tgId}` : ""}</p>
 
-      {admin && isAdmin && <AdminPanel s={s} calc={calc} names={names} approve={approve} remove={remove} markPaid={markPaid} setRate={setRate} addDevice={addDevice} delDevice={delDevice} />}
+      {admin && isAdmin && <AdminPanel s={s} calc={calc} names={names} approve={approve} remove={remove} markPaid={markPaid} weekly={weekly} setRate={setRate} addDevice={addDevice} delDevice={delDevice} />}
 
       {tab === "home" && (
         <main className="space-y-6 px-5 pt-3">
@@ -335,7 +343,7 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
   return (
     <div className="space-y-2">
       {txs.map((t) => {
-        const m = METHODS.find((x) => x.id === t.method);
+        const m = METHODS.find((x) => x.id === t.method) ?? (t.method === "bonus" ? { icon: "🎁", name: "Weekly Bonus" } : null);
         if (!m) return null;
         return (
           <div key={t.id} className="card-soft flex items-center gap-3 p-4">
@@ -348,7 +356,7 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
               <ProofButton img={t.img} />
             </div>
             <div className="shrink-0 text-right">
-              <p className="font-bold">${t.usd.toFixed(2)}</p>
+              <p className="font-bold">{t.method === "bonus" ? tk(t.usd * t.rate) : `$${t.usd.toFixed(2)}`}</p>
               <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${t.status === "pending" ? "bg-warning/20 text-warning" : "bg-success/20 text-success"}`}>
                 {t.paid ? "PAID" : t.status.toUpperCase()}
               </span>
@@ -463,7 +471,7 @@ function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | un
     </div>
   );
 }
-function AdminPanel({ s, calc, names, approve, remove, markPaid, setRate, addDevice: add, delDevice }: any) {
+function AdminPanel({ s, calc, names, approve, remove, markPaid, weekly, setRate, addDevice: add, delDevice }: any) {
   const [kind, setKind] = useState("Cloud Phone");
   const [label, setLabel] = useState("");
   const [days, setDays] = useState("7");
@@ -495,6 +503,9 @@ function AdminPanel({ s, calc, names, approve, remove, markPaid, setRate, addDev
       </div>
       <button onClick={markPaid} disabled={calc.allRunning <= 0} className="bg-grad-teal w-full rounded-2xl py-2.5 text-sm font-bold text-on-gradient disabled:opacity-40">
         Mark {tk(calc.allRunning)} as Paid Out
+      </button>
+      <button onClick={weekly} className="bg-grad-orange w-full rounded-2xl py-2.5 text-sm font-bold text-on-gradient">
+        🏆 Send Weekly Leaderboard
       </button>
       <div className="space-y-2">
         <p className="text-sm font-semibold">Rates (BDT per $)</p>

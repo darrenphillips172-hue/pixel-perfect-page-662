@@ -15,6 +15,13 @@
       "when": 1794778080649,
       "tag": "0001_weekly_bonus",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794778787468,
+      "tag": "0002_tx_notified",
+      "breakpoints": true
     }
   ]
 }
