@@ -39,7 +39,7 @@ const fmtBn = (t: number) =>
   new Date(t).toLocaleString("bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 type Row = Database["public"]["Tables"]["transactions"]["Row"];
-const toTx = (r: Row): Tx => ({ id: r.id, userId: r.user_id, method: r.method, usd: Number(r.usd), rate: Number(r.rate), status: r.status as Tx["status"], paid: r.paid, at: new Date(r.created_at).getTime(), code: r.code, site: r.site, img: r.img_path ?? undefined });
+const toTx = (r: Row): Tx => ({ id: r.id, userId: r.user_id, method: r.method, usd: Number(r.usd), rate: Number(r.rate), status: r.status as Tx["status"], paid: r.paid, at: new Date(r.created_at).getTime(), code: r.code, site: r.site, ...(r.img_path ? { img: r.img_path } : {}) });
 
 /** Signs the visitor in with their Telegram account (no login screen). */
 function useTelegramSession() {
@@ -52,9 +52,9 @@ function useTelegramSession() {
       const tgUser = tg?.initDataUnsafe?.user;
       const name = tgUser ? [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") : "";
       const { data: { session } } = await supabase.auth.getSession();
-      const sameUser = session && (!tgUser || session.user.user_metadata?.telegram_id === tgUser.id);
+      const sameUser = session && (!tgUser || session.user.user_metadata?.["telegram_id"] === tgUser.id);
       if (session && sameUser) {
-        setSt({ uid: session.user.id, tgId: session.user.user_metadata?.telegram_id, name: name || session.user.user_metadata?.name || "User", status: "ready" });
+        setSt({ uid: session.user.id, tgId: session.user.user_metadata?.["telegram_id"], name: name || session.user.user_metadata?.["name"] || "User", status: "ready" });
         return;
       }
       if (!initData) { setSt({ name: "", status: "no-telegram" }); return; }
