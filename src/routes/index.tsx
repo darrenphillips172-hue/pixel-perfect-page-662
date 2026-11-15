@@ -37,7 +37,7 @@ type State = { txs: Tx[]; devices: Device[]; paidOut: number };
 const KEY = "dollar-hisab-v1";
 const empty: State = { txs: [], devices: [], paidOut: 0 };
 
-const bnDigits = (s: string | number) => String(s).replace(/\d/g, (d) => "০১২৩৪৫৬৭৮৯"[+d]);
+const bnDigits = (s: string | number) => String(s).replace(/\d/g, (d) => "০১২৩৪৫৬৭৮৯"[+d] ?? d);
 const tk = (n: number) => "৳" + Math.round(n).toLocaleString("en-US");
 const fmtBn = (t: number) =>
   new Date(t).toLocaleString("bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" });
@@ -60,7 +60,7 @@ function App() {
   const [loaded, setLoaded] = useState(false);
   const [tab, setTab] = useState<"home" | "history" | "leader">("home");
   const [admin, setAdmin] = useState(false);
-  const [modal, setModal] = useState<{ method: Method; edit?: Tx } | null>(null);
+  const [modal, setModal] = useState<{ method: Method; edit?: Tx | undefined } | null>(null);
   const [now, setNow] = useState(0);
 
   useEffect(() => {
@@ -283,7 +283,7 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
     </div>
   );
 }
-function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx; onClose: () => void; onSubmit: (u: number) => void }) {
+function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | undefined; onClose: () => void; onSubmit: (u: number) => void }) {
   const [v, setV] = useState(edit ? String(edit.usd) : "");
   const n = parseFloat(v);
   const valid = n > 0 && n < 100000;
