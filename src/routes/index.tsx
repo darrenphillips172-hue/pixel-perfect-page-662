@@ -1,5 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
+import { telegramSignIn } from "@/lib/telegram-auth.functions";
 import { Home, History, Trophy, Wallet, Shield, X, Pencil, Check, Trash2, ImagePlus } from "lucide-react";
 
 export const Route = createFileRoute("/")({
@@ -24,11 +27,10 @@ const METHODS: Method[] = [
 ];
 const SUMMARY = METHODS.map((m) => ({ name: m.name, ids: [m.id] }));
 
-type Tx = { id: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number; code: string; site: string; img?: string };
+type Tx = { id: string; userId?: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number; code: string; site: string; img?: string };
 const SURVEY_SITES = ["TapResearch", "Topsurvey", "PrimeOpinion", "Heycash", "Five survey", "Heypiggy", "Nicesurvey", "Surveystreak", "Eureka", "Other"];
 type Device = { id: string; kind: string; label: string; expiry: number };
 type State = { txs: Tx[]; devices: Device[]; paidOut: number; rates?: Record<string, number> };
-const KEY = "dollar-hisab-v2";
 const empty: State = { txs: [], devices: [], paidOut: 0 };
 
 const bnDigits = (s: string | number) => String(s).replace(/\d/g, (d) => "০১২৩৪৫৬৭৮৯"[+d] ?? d);
@@ -36,72 +38,145 @@ const tk = (n: number) => "৳" + Math.round(n).toLocaleString("en-US");
 const fmtBn = (t: number) =>
   new Date(t).toLocaleString("bn-BD", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" });
 
-function useTelegramUser() {
-  const [u, setU] = useState<{ id?: number; name: string }>({ name: "Guest" });
+type Row = Database["public"]["Tables"]["transactions"]["Row"];
+const toTx = (r: Row): Tx => ({ id: r.id, userId: r.user_id, method: r.method, usd: Number(r.usd), rate: Number(r.rate), status: r.status as Tx["status"], paid: r.paid, at: new Date(r.created_at).getTime(), code: r.code, site: r.site, ...(r.img_path ? { img: r.img_path } : {}) });
+
+/** Signs the visitor in with their Telegram account (no login screen). */
+function useTelegramSession() {
+  const [st, setSt] = useState<{ uid?: string; tgId?: number; name: string; status: "loading" | "ready" | "no-telegram" | "error"; err?: string }>({ name: "", status: "loading" });
   useEffect(() => {
-    const tg = (window as any).Telegram?.WebApp;
-    if (!tg) return;
-    tg.ready(); tg.expand?.();
-    const user = tg.initDataUnsafe?.user;
-    if (user) setU({ id: user.id, name: [user.first_name, user.last_name].filter(Boolean).join(" ") });
+    (async () => {
+      const tg = (window as any).Telegram?.WebApp;
+      tg?.ready?.(); tg?.expand?.();
+      const initData: string = tg?.initData ?? "";
+      const tgUser = tg?.initDataUnsafe?.user;
+      const name = tgUser ? [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") : "";
+      const { data: { session } } = await supabase.auth.getSession();
+      const sameUser = session && (!tgUser || session.user.user_metadata?.["telegram_id"] === tgUser.id);
+      if (session && sameUser) {
+        setSt({ uid: session.user.id, tgId: session.user.user_metadata?.["telegram_id"], name: name || session.user.user_metadata?.["name"] || "User", status: "ready" });
+        return;
+      }
+      if (!initData) { setSt({ name: "", status: "no-telegram" }); return; }
+      try {
+        if (session) await supabase.auth.signOut();
+        const r = await telegramSignIn({ data: { initData } });
+        const { data, error } = await supabase.auth.verifyOtp({ token_hash: r.tokenHash, type: "magiclink" });
+        if (error || !data.user) throw error ?? new Error("Sign-in failed");
+        setSt({ uid: data.user.id, tgId: r.telegramId, name: name || "User", status: "ready" });
+      } catch (e: any) { setSt({ name: "", status: "error", err: e?.message ?? "Sign-in failed" }); }
+    })();
   }, []);
-  return u;
+  return st;
 }
 
 export function App() {
-  const user = useTelegramUser();
+  const user = useTelegramSession();
   const [s, setS] = useState<State>(empty);
-  const [loaded, setLoaded] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [board, setBoard] = useState<{ name: string; total: number }[]>([]);
   const [tab, setTab] = useState<"home" | "history" | "leader">("home");
   const [admin, setAdmin] = useState(false);
   const [modal, setModal] = useState<{ method: Method; edit?: Tx | undefined } | null>(null);
   const [now, setNow] = useState(0);
 
   useEffect(() => {
-    try { const r = localStorage.getItem(KEY); if (r) setS(JSON.parse(r)); } catch {}
-    setLoaded(true); setNow(Date.now());
+    setNow(Date.now());
     const i = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(i);
   }, []);
-  useEffect(() => { if (loaded) localStorage.setItem(KEY, JSON.stringify(s)); }, [s, loaded]);
+
+  const load = useCallback(async () => {
+    if (!user.uid) return;
+    const [tx, dev, pay, rt, role, lb] = await Promise.all([
+      supabase.from("transactions").select("*").order("created_at", { ascending: false }),
+      supabase.from("devices").select("*").order("expiry"),
+      supabase.from("payouts").select("amount").eq("user_id", user.uid),
+      supabase.from("rates").select("*"),
+      supabase.from("user_roles").select("role").eq("user_id", user.uid).eq("role", "admin"),
+      supabase.rpc("get_leaderboard"),
+    ]);
+    const adm = (role.data?.length ?? 0) > 0;
+    setIsAdmin(adm);
+    setBoard((lb.data ?? []).map((r) => ({ name: r.name, total: Number(r.total) })));
+    setS({
+      txs: (tx.data ?? []).map(toTx),
+      devices: (dev.data ?? []).map((d) => ({ id: d.id, kind: d.kind, label: d.label, expiry: new Date(d.expiry).getTime() })),
+      paidOut: (pay.data ?? []).reduce((a, r) => a + Number(r.amount), 0),
+      rates: Object.fromEntries((rt.data ?? []).map((r) => [r.method, Number(r.rate)])),
+    });
+    if (adm) {
+      const { data } = await supabase.from("profiles").select("id,name,telegram_id");
+      setNames(Object.fromEntries((data ?? []).map((p) => [p.id, `${p.name} (${p.telegram_id})`])));
+    }
+  }, [user.uid]);
+  useEffect(() => { load(); }, [load]);
 
   const methods = METHODS.map((m) => ({ ...m, rate: s.rates?.[m.id] ?? m.rate }));
+  const mine = s.txs.filter((t) => t.userId === user.uid);
   const bdt = (t: Tx) => t.usd * t.rate;
   const calc = useMemo(() => {
-    const appr = s.txs.filter((t) => t.status === "approved");
+    const appr = mine.filter((t) => t.status === "approved");
     const running = appr.filter((t) => !t.paid);
-    const pending = s.txs.filter((t) => t.status === "pending");
+    const pending = mine.filter((t) => t.status === "pending");
+    const allPending = s.txs.filter((t) => t.status === "pending");
+    const allRunning = s.txs.filter((t) => t.status === "approved" && !t.paid).reduce((a, t) => a + bdt(t), 0);
     return {
       running: running.reduce((a, t) => a + bdt(t), 0),
       runningUsd: running.reduce((a, t) => a + t.usd, 0),
       pending: pending.reduce((a, t) => a + bdt(t), 0),
       lifetime: appr.reduce((a, t) => a + bdt(t), 0),
-      appr, pendingList: pending,
+      appr, pendingList: pending, allPending, allRunning,
     };
-  }, [s]);
+  }, [s, user.uid]);
 
-  const upsertTx = (method: Method, d: { usd: number; code: string; site: string; img: string }, edit?: Tx) =>
-    setS((p) => ({
-      ...p,
-      txs: edit
-        ? p.txs.map((t) => (t.id === edit.id ? { ...t, usd: d.usd, code: d.code, site: d.site, img: d.img } : t))
-        : [{ id: crypto.randomUUID(), method: method.id, usd: d.usd, code: d.code, site: d.site, img: d.img, rate: method.rate, status: "pending", paid: false, at: Date.now() }, ...p.txs],
-    }));
-  const approve = (id: string) => setS((p) => ({ ...p, txs: p.txs.map((t) => (t.id === id ? { ...t, status: "approved" } : t)) }));
-  const remove = (id: string) => setS((p) => ({ ...p, txs: p.txs.filter((t) => t.id !== id) }));
-  const markPaid = () => setS((p) => ({ ...p, paidOut: p.paidOut + calc.running, txs: p.txs.map((t) => (t.status === "approved" ? { ...t, paid: true } : t)) }));
+  const fail = (e: { message: string } | null) => { if (e) { alert(e.message); return true; } return false; };
+  const upsertTx = async (method: Method, d: { usd: number; code: string; site: string; img: string }, edit?: Tx) => {
+    let img_path: string | null = edit?.img ?? null;
+    if (!d.img) img_path = null;
+    else if (d.img.startsWith("data:")) {
+      const blob = await (await fetch(d.img)).blob();
+      const path = `${user.uid}/${crypto.randomUUID()}.jpg`;
+      const up = await supabase.storage.from("proofs").upload(path, blob, { contentType: blob.type || "image/jpeg" });
+      if (fail(up.error)) return;
+      img_path = path;
+    }
+    const body = { usd: d.usd, code: d.code, site: d.site, img_path };
+    const r = edit
+      ? await supabase.from("transactions").update(body).eq("id", edit.id)
+      : await supabase.from("transactions").insert({ ...body, method: method.id, user_id: user.uid! });
+    if (!fail(r.error)) load();
+  };
+  const approve = async (id: string) => { const r = await supabase.from("transactions").update({ status: "approved" }).eq("id", id); if (!fail(r.error)) load(); };
+  const remove = async (id: string) => { const r = await supabase.from("transactions").delete().eq("id", id); if (!fail(r.error)) load(); };
+  const markPaid = async () => { const r = await supabase.rpc("mark_all_paid"); if (!fail(r.error)) load(); };
+  const setRate = async (method: string, rate: number) => { setS((p) => ({ ...p, rates: { ...p.rates, [method]: rate } })); await supabase.from("rates").upsert({ method, rate }); };
+  const addDevice = async (kind: string, label: string, days: number) => { const r = await supabase.from("devices").insert({ kind, label, expiry: new Date(Date.now() + days * 864e5).toISOString() }); if (!fail(r.error)) load(); };
+  const delDevice = async (id: string) => { const r = await supabase.from("devices").delete().eq("id", id); if (!fail(r.error)) load(); };
+
+  if (user.status !== "ready") {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-8 text-center">
+        <h1 className="font-bn text-2xl font-bold">💵 ডলার হিসাব</h1>
+        <p className="font-bn text-muted-foreground">
+          {user.status === "loading" ? "Telegram দিয়ে লগইন হচ্ছে…" : user.status === "no-telegram" ? "এই অ্যাপটি Telegram এর ভিতরে খুলুন।" : `লগইন ব্যর্থ: ${user.err}`}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto min-h-screen max-w-md pb-28">
       <header className="sticky top-0 z-20 flex items-center justify-between border-b bg-card/90 px-5 py-4 backdrop-blur">
         <h1 className="font-bn text-xl font-bold">💵 ডলার হিসাব</h1>
-        <button onClick={() => setAdmin(!admin)} className={`flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-semibold ${admin ? "bg-primary text-primary-foreground" : "bg-card"}`}>
+        {isAdmin && <button onClick={() => setAdmin(!admin)} className={`flex items-center gap-1 rounded-full border px-3 py-2 text-xs font-semibold ${admin ? "bg-primary text-primary-foreground" : "bg-card"}`}>
           <Shield size={14} /> Admin
-        </button>
+        </button>}
       </header>
-      <p className="px-5 pt-3 text-xs text-muted-foreground">👋 {user.name}{user.id ? ` · ID ${user.id}` : ""}</p>
+      <p className="px-5 pt-3 text-xs text-muted-foreground">👋 {user.name}{user.tgId ? ` · ID ${user.tgId}` : ""}</p>
 
-      {admin && <AdminPanel s={s} setS={setS} calc={calc} approve={approve} remove={remove} markPaid={markPaid} />}
+      {admin && isAdmin && <AdminPanel s={s} calc={calc} names={names} approve={approve} remove={remove} markPaid={markPaid} setRate={setRate} addDevice={addDevice} delDevice={delDevice} />}
 
       {tab === "home" && (
         <main className="space-y-6 px-5 pt-3">
@@ -155,21 +230,26 @@ export function App() {
           </div>
 
           <Section title="📝 Recent Activity">
-            <TxList txs={s.txs.slice(0, 5)} onEdit={(t) => setModal({ method: methods.find((m) => m.id === t.method)!, edit: t })} />
+            <TxList txs={mine.slice(0, 5)} onEdit={(t) => setModal({ method: methods.find((m) => m.id === t.method)!, edit: t })} />
           </Section>
         </main>
       )}
 
       {tab === "history" && (
         <main className="px-5 pt-3"><Section title="🧾 All Transactions">
-          <TxList txs={s.txs} onEdit={(t) => setModal({ method: methods.find((m) => m.id === t.method)!, edit: t })} />
+          <TxList txs={mine} onEdit={(t) => setModal({ method: methods.find((m) => m.id === t.method)!, edit: t })} />
         </Section></main>
       )}
 
       {tab === "leader" && (
         <main className="px-5 pt-3"><Section title="🏆 Top Earners">
-          <div className="card-soft flex items-center justify-between p-5">
-            <span className="font-semibold">🥇 {user.name}</span><span className="font-bold">{tk(calc.lifetime)}</span>
+          <div className="space-y-2">
+            {board.length === 0 && <p className="card-soft p-5 text-sm text-muted-foreground">এখনো কেউ নেই</p>}
+            {board.map((b, i) => (
+              <div key={i} className="card-soft flex items-center justify-between p-5">
+                <span className="font-semibold">{["🥇", "🥈", "🥉"][i] ?? `#${i + 1}`} {b.name}</span><span className="font-bold">{tk(b.total)}</span>
+              </div>
+            ))}
           </div>
         </Section></main>
       )}
@@ -182,7 +262,7 @@ export function App() {
         ))}
       </nav>
 
-      {modal && <AmountModal m={modal.method} edit={modal.edit} onClose={() => setModal(null)} onSubmit={(d) => { upsertTx(modal.method, d, modal.edit); setModal(null); }} />}
+      {modal && <AmountModal m={modal.method} edit={modal.edit} onClose={() => setModal(null)} onSubmit={async (d) => { await upsertTx(modal.method, d, modal.edit); setModal(null); }} />}
     </div>
   );
 }
@@ -282,9 +362,19 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
     </div>
   );
 }
-function ProofButton({ img }: { img?: string | undefined }) {
+function useProofUrl(img?: string) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    if (!img) { setUrl(""); return; }
+    if (img.startsWith("data:")) { setUrl(img); return; }
+    supabase.storage.from("proofs").createSignedUrl(img, 3600).then(({ data }) => setUrl(data?.signedUrl ?? ""));
+  }, [img]);
+  return url;
+}
+function ProofButton({ img: path }: { img?: string | undefined }) {
   const [open, setOpen] = useState(false);
-  if (!img) return null;
+  const img = useProofUrl(path);
+  if (!path || !img) return null;
   return (
     <>
       <button onClick={() => setOpen(true)} aria-label="View Screenshot" className="mt-1 flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-semibold text-primary active:scale-95">
@@ -299,11 +389,13 @@ function ProofButton({ img }: { img?: string | undefined }) {
     </>
   );
 }
-function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | undefined; onClose: () => void; onSubmit: (d: { usd: number; code: string; site: string; img: string }) => void }) {
+function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | undefined; onClose: () => void; onSubmit: (d: { usd: number; code: string; site: string; img: string }) => Promise<void> }) {
   const [v, setV] = useState(edit ? String(edit.usd) : "");
   const [code, setCode] = useState(edit?.code ?? "");
   const [site, setSite] = useState(edit?.site ?? "");
   const [img, setImg] = useState(edit?.img ?? "");
+  const [busy, setBusy] = useState(false);
+  const preview = useProofUrl(img);
   const n = parseFloat(v);
   const usdOk = n > 0 && n < 100000;
   const valid = usdOk && code.trim() !== "" && site !== "";
@@ -357,35 +449,35 @@ function AmountModal({ m, edit, onClose, onSubmit }: { m: Method; edit?: Tx | un
         <input id="amt-img" type="file" accept="image/*" onChange={(e) => pickImage(e.target.files?.[0])} className="mt-1 w-full rounded-2xl border bg-card px-4 py-3 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-primary file:px-3 file:py-1 file:text-xs file:font-bold file:text-primary-foreground" />
         {img ? (
           <div className="mt-2 flex items-center gap-3">
-            <img src={img} alt="Proof preview" className="h-20 w-20 rounded-xl border object-cover" />
+            <img src={preview} alt="Proof preview" className="h-20 w-20 rounded-xl border object-cover" />
             <button onClick={() => setImg("")} className="flex items-center gap-1 text-xs font-semibold text-destructive"><Trash2 size={12} /> Remove</button>
           </div>
         ) : (
           <p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground"><ImagePlus size={12} /> Optional — gallery or camera photo</p>
         )}
 
-        <button disabled={!valid} onClick={() => onSubmit({ usd: Math.round(n * 100) / 100, code: code.trim(), site, img })} className="bg-grad-purple mt-5 w-full rounded-2xl py-3 font-bold text-on-gradient disabled:opacity-40">
-          {edit ? "Save" : "Submit (Pending)"}
+        <button disabled={!valid || busy} onClick={async () => { setBusy(true); try { await onSubmit({ usd: Math.round(n * 100) / 100, code: code.trim(), site, img }); } finally { setBusy(false); } }} className="bg-grad-purple mt-5 w-full rounded-2xl py-3 font-bold text-on-gradient disabled:opacity-40">
+          {busy ? "Saving…" : edit ? "Save" : "Submit (Pending)"}
         </button>
       </div>
     </div>
   );
 }
-function AdminPanel({ s, setS, calc, approve, remove, markPaid }: any) {
+function AdminPanel({ s, calc, names, approve, remove, markPaid, setRate, addDevice: add, delDevice }: any) {
   const [kind, setKind] = useState("Cloud Phone");
   const [label, setLabel] = useState("");
   const [days, setDays] = useState("7");
   const addDevice = () => {
     if (!label.trim() || !(+days > 0)) return;
-    setS((p: State) => ({ ...p, devices: [...p.devices, { id: crypto.randomUUID(), kind, label: label.trim().slice(0, 40), expiry: Date.now() + +days * 864e5 }] }));
+    add(kind, label.trim().slice(0, 40), +days);
     setLabel("");
   };
   return (
     <div className="mx-5 mt-3 space-y-4 rounded-3xl border-2 border-primary/40 bg-card p-4">
       <p className="label-caps text-primary">🛡️ Admin Panel</p>
       <div>
-        <p className="mb-2 text-sm font-semibold">Pending ({calc.pendingList.length})</p>
-        {calc.pendingList.map((t: Tx) => (
+        <p className="mb-2 text-sm font-semibold">Pending ({calc.allPending.length})</p>
+        {calc.allPending.map((t: Tx) => (
           <div key={t.id} className="border-b py-2 text-sm">
             <div className="flex items-center justify-between gap-2">
               <span className="min-w-0 truncate font-semibold">{METHODS.find((m) => m.id === t.method)?.name} · ${t.usd}</span>
@@ -394,21 +486,22 @@ function AdminPanel({ s, setS, calc, approve, remove, markPaid }: any) {
                 <button onClick={() => remove(t.id)} className="rounded-full bg-destructive p-1.5 text-on-gradient" aria-label="Delete"><Trash2 size={14} /></button>
               </span>
             </div>
+            <p className="truncate text-xs text-muted-foreground">👤 {names[t.userId ?? ""] ?? "—"}</p>
             <p className="truncate text-xs font-semibold text-primary">🏷️ {t.site || "—"}</p>
             <p className="truncate font-mono text-[11px] text-muted-foreground">🎫 {t.code || "—"}</p>
             <ProofButton img={t.img} />
           </div>
         ))}
       </div>
-      <button onClick={markPaid} disabled={calc.running <= 0} className="bg-grad-teal w-full rounded-2xl py-2.5 text-sm font-bold text-on-gradient disabled:opacity-40">
-        Mark {tk(calc.running)} as Paid Out
+      <button onClick={markPaid} disabled={calc.allRunning <= 0} className="bg-grad-teal w-full rounded-2xl py-2.5 text-sm font-bold text-on-gradient disabled:opacity-40">
+        Mark {tk(calc.allRunning)} as Paid Out
       </button>
       <div className="space-y-2">
         <p className="text-sm font-semibold">Rates (BDT per $)</p>
         <div className="grid grid-cols-3 gap-2">
           {METHODS.map((m) => (
             <label key={m.id} className="text-xs">{m.name}
-              <input type="number" value={s.rates?.[m.id] ?? m.rate} onChange={(e) => { const v = +e.target.value; if (v >= 0 && v < 10000) setS((p: State) => ({ ...p, rates: { ...p.rates, [m.id]: v } })); }} className="mt-1 w-full rounded-xl border bg-card px-2 py-1.5 text-sm" />
+              <input type="number" value={s.rates?.[m.id] ?? m.rate} onChange={(e) => { const v = +e.target.value; if (v >= 0 && v < 10000) setRate(m.id, v); }} className="mt-1 w-full rounded-xl border bg-card px-2 py-1.5 text-sm" />
             </label>
           ))}
         </div>
@@ -425,7 +518,7 @@ function AdminPanel({ s, setS, calc, approve, remove, markPaid }: any) {
         {s.devices.map((d: Device) => (
           <div key={d.id} className="flex items-center justify-between text-sm">
             <span>{d.kind} ({d.label})</span>
-            <button onClick={() => setS((p: State) => ({ ...p, devices: p.devices.filter((x) => x.id !== d.id) }))} className="text-destructive" aria-label="Remove"><Trash2 size={14} /></button>
+            <button onClick={() => delDevice(d.id)} className="text-destructive" aria-label="Remove"><Trash2 size={14} /></button>
           </div>
         ))}
       </div>

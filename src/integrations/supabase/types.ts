@@ -14,16 +14,170 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      devices: {
+        Row: {
+          created_at: string
+          expiry: string
+          id: string
+          kind: string
+          label: string
+        }
+        Insert: {
+          created_at?: string
+          expiry: string
+          id?: string
+          kind: string
+          label: string
+        }
+        Update: {
+          created_at?: string
+          expiry?: string
+          id?: string
+          kind?: string
+          label?: string
+        }
+        Relationships: []
+      }
+      payouts: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          telegram_id: number
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          name?: string
+          telegram_id: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          telegram_id?: number
+        }
+        Relationships: []
+      }
+      rates: {
+        Row: {
+          method: string
+          rate: number
+        }
+        Insert: {
+          method: string
+          rate: number
+        }
+        Update: {
+          method?: string
+          rate?: number
+        }
+        Relationships: []
+      }
+      transactions: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          img_path: string | null
+          method: string
+          paid: boolean
+          rate: number
+          site: string
+          status: string
+          usd: number
+          user_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          img_path?: string | null
+          method: string
+          paid?: boolean
+          rate?: number
+          site: string
+          status?: string
+          usd: number
+          user_id?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          img_path?: string | null
+          method?: string
+          paid?: boolean
+          rate?: number
+          site?: string
+          status?: string
+          usd?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_leaderboard: {
+        Args: never
+        Returns: {
+          name: string
+          total: number
+        }[]
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      mark_all_paid: { Args: never; Returns: undefined }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +304,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+    },
   },
 } as const
