@@ -24,7 +24,8 @@ const METHODS: Method[] = [
 ];
 const SUMMARY = METHODS.map((m) => ({ name: m.name, ids: [m.id] }));
 
-type Tx = { id: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number };
+type Tx = { id: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number; code: string; site: string };
+const SURVEY_SITES = ["Swagbucks", "Freecash", "Prime Opinion", "Five Surveys", "HeyCash", "Qmee", "Survey Junkie", "InboxDollars", "Branded Surveys", "Other"];
 type Device = { id: string; kind: string; label: string; expiry: number };
 type State = { txs: Tx[]; devices: Device[]; paidOut: number; rates?: Record<string, number> };
 const KEY = "dollar-hisab-v2";
@@ -79,12 +80,12 @@ function App() {
     };
   }, [s]);
 
-  const upsertTx = (method: Method, usd: number, edit?: Tx) =>
+  const upsertTx = (method: Method, d: { usd: number; code: string; site: string }, edit?: Tx) =>
     setS((p) => ({
       ...p,
       txs: edit
-        ? p.txs.map((t) => (t.id === edit.id ? { ...t, usd } : t))
-        : [{ id: crypto.randomUUID(), method: method.id, usd, rate: method.rate, status: "pending", paid: false, at: Date.now() }, ...p.txs],
+        ? p.txs.map((t) => (t.id === edit.id ? { ...t, usd: d.usd, code: d.code, site: d.site } : t))
+        : [{ id: crypto.randomUUID(), method: method.id, usd: d.usd, code: d.code, site: d.site, rate: method.rate, status: "pending", paid: false, at: Date.now() }, ...p.txs],
     }));
   const approve = (id: string) => setS((p) => ({ ...p, txs: p.txs.map((t) => (t.id === id ? { ...t, status: "approved" } : t)) }));
   const remove = (id: string) => setS((p) => ({ ...p, txs: p.txs.filter((t) => t.id !== id) }));
@@ -181,7 +182,7 @@ function App() {
         ))}
       </nav>
 
-      {modal && <AmountModal m={modal.method} edit={modal.edit} onClose={() => setModal(null)} onSubmit={(u) => { upsertTx(modal.method, u, modal.edit); setModal(null); }} />}
+      {modal && <AmountModal m={modal.method} edit={modal.edit} onClose={() => setModal(null)} onSubmit={(d) => { upsertTx(modal.method, d, modal.edit); setModal(null); }} />}
     </div>
   );
 }
@@ -261,6 +262,8 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
             <span className="text-2xl">{m.icon}</span>
             <div className="min-w-0 flex-1">
               <p className="truncate font-semibold">{m.name}</p>
+              <p className="truncate text-xs font-semibold text-primary">🏷️ {t.site || "—"}</p>
+              <p className="truncate font-mono text-[11px] text-muted-foreground">🎫 {t.code || "—"}</p>
               <p className="font-bn truncate text-xs text-muted-foreground">{fmtBn(t.at)}</p>
             </div>
             <div className="shrink-0 text-right">
@@ -314,12 +317,16 @@ function AdminPanel({ s, setS, calc, approve, remove, markPaid }: any) {
       <div>
         <p className="mb-2 text-sm font-semibold">Pending ({calc.pendingList.length})</p>
         {calc.pendingList.map((t: Tx) => (
-          <div key={t.id} className="flex items-center justify-between border-b py-2 text-sm">
-            <span>{METHODS.find((m) => m.id === t.method)?.name} · ${t.usd}</span>
-            <span className="flex gap-2">
-              <button onClick={() => approve(t.id)} className="rounded-full bg-success p-1.5 text-on-gradient" aria-label="Approve"><Check size={14} /></button>
-              <button onClick={() => remove(t.id)} className="rounded-full bg-destructive p-1.5 text-on-gradient" aria-label="Delete"><Trash2 size={14} /></button>
-            </span>
+          <div key={t.id} className="border-b py-2 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate font-semibold">{METHODS.find((m) => m.id === t.method)?.name} · ${t.usd}</span>
+              <span className="flex shrink-0 gap-2">
+                <button onClick={() => approve(t.id)} className="rounded-full bg-success p-1.5 text-on-gradient" aria-label="Approve"><Check size={14} /></button>
+                <button onClick={() => remove(t.id)} className="rounded-full bg-destructive p-1.5 text-on-gradient" aria-label="Delete"><Trash2 size={14} /></button>
+              </span>
+            </div>
+            <p className="truncate text-xs font-semibold text-primary">🏷️ {t.site || "—"}</p>
+            <p className="truncate font-mono text-[11px] text-muted-foreground">🎫 {t.code || "—"}</p>
           </div>
         ))}
       </div>
