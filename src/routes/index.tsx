@@ -18,23 +18,16 @@ export const Route = createFileRoute("/")({
 
 type Method = { id: string; name: string; icon: string; rate: number; sub?: string; tone: string };
 const METHODS: Method[] = [
-  { id: "amazon", name: "Amazon", icon: "🅰️", rate: 90, tone: "from-amber-100 to-orange-200 text-orange-600" },
-  { id: "paypal", name: "PayPal", icon: "🅿️", rate: 100, tone: "from-emerald-50 to-green-200 text-blue-900" },
-  { id: "visa", name: "Visa Prepaid", icon: "💳", rate: 100, tone: "from-rose-50 to-red-200 text-red-700" },
-  { id: "walmart", name: "Walmart", icon: "🏪", rate: 94, tone: "from-sky-50 to-blue-200 text-blue-700" },
-  { id: "apple5", name: "Apple $5", icon: "🍎", rate: 100, sub: "$5-$9", tone: "from-zinc-100 to-zinc-300 text-zinc-900" },
-  { id: "apple10", name: "Apple $10+", icon: "🍏", rate: 105, tone: "from-zinc-100 to-zinc-300 text-zinc-900" },
-  { id: "ach", name: "ACH", icon: "🏦", rate: 108, tone: "from-emerald-50 to-emerald-200 text-emerald-800" },
+  { id: "amazon", name: "Amazon", icon: "🅰️", rate: 80, tone: "from-amber-100 to-orange-200 text-orange-600" },
+  { id: "apple", name: "Apple", icon: "🍎", rate: 85, tone: "from-zinc-100 to-zinc-300 text-zinc-900" },
+  { id: "ach", name: "ACH", icon: "🏦", rate: 95, tone: "from-emerald-50 to-emerald-200 text-emerald-800" },
 ];
-const SUMMARY = [
-  { name: "Amazon", ids: ["amazon"] }, { name: "PayPal", ids: ["paypal"] }, { name: "Visa Prepaid", ids: ["visa"] },
-  { name: "Walmart", ids: ["walmart"] }, { name: "Apple", ids: ["apple5", "apple10"] }, { name: "ACH", ids: ["ach"] },
-];
+const SUMMARY = METHODS.map((m) => ({ name: m.name, ids: [m.id] }));
 
 type Tx = { id: string; method: string; usd: number; rate: number; status: "pending" | "approved"; paid: boolean; at: number };
 type Device = { id: string; kind: string; label: string; expiry: number };
-type State = { txs: Tx[]; devices: Device[]; paidOut: number };
-const KEY = "dollar-hisab-v1";
+type State = { txs: Tx[]; devices: Device[]; paidOut: number; rates?: Record<string, number> };
+const KEY = "dollar-hisab-v2";
 const empty: State = { txs: [], devices: [], paidOut: 0 };
 
 const bnDigits = (s: string | number) => String(s).replace(/\d/g, (d) => "০১২৩৪৫৬৭৮৯"[+d] ?? d);
@@ -71,6 +64,7 @@ function App() {
   }, []);
   useEffect(() => { if (loaded) localStorage.setItem(KEY, JSON.stringify(s)); }, [s, loaded]);
 
+  const methods = METHODS.map((m) => ({ ...m, rate: s.rates?.[m.id] ?? m.rate }));
   const bdt = (t: Tx) => t.usd * t.rate;
   const calc = useMemo(() => {
     const appr = s.txs.filter((t) => t.status === "approved");
@@ -143,8 +137,8 @@ function App() {
           </Section>
 
           <Section title="💰 Add Earnings">
-            <div className="grid grid-cols-4 gap-2">
-              {METHODS.map((m) => (
+            <div className="grid grid-cols-3 gap-3">
+              {methods.map((m) => (
                 <button key={m.id} onClick={() => setModal({ method: m })} className={`flex min-h-36 flex-col items-center justify-center gap-1 rounded-[2rem] bg-gradient-to-b p-2 text-center shadow-sm transition active:scale-95 ${m.tone}`}>
                   <span className="text-3xl">{m.icon}</span>
                   <span className="text-sm font-bold leading-tight">{m.name}</span>
@@ -160,14 +154,14 @@ function App() {
           </div>
 
           <Section title="📝 Recent Activity">
-            <TxList txs={s.txs.slice(0, 5)} onEdit={(t) => setModal({ method: METHODS.find((m) => m.id === t.method)!, edit: t })} />
+            <TxList txs={s.txs.slice(0, 5)} onEdit={(t) => setModal({ method: methods.find((m) => m.id === t.method)!, edit: t })} />
           </Section>
         </main>
       )}
 
       {tab === "history" && (
         <main className="px-5 pt-3"><Section title="🧾 All Transactions">
-          <TxList txs={s.txs} onEdit={(t) => setModal({ method: METHODS.find((m) => m.id === t.method)!, edit: t })} />
+          <TxList txs={s.txs} onEdit={(t) => setModal({ method: methods.find((m) => m.id === t.method)!, edit: t })} />
         </Section></main>
       )}
 
@@ -260,7 +254,8 @@ function TxList({ txs, onEdit }: { txs: Tx[]; onEdit: (t: Tx) => void }) {
   return (
     <div className="space-y-2">
       {txs.map((t) => {
-        const m = METHODS.find((x) => x.id === t.method)!;
+        const m = METHODS.find((x) => x.id === t.method);
+        if (!m) return null;
         return (
           <div key={t.id} className="card-soft flex items-center gap-3 p-4">
             <span className="text-2xl">{m.icon}</span>
@@ -331,6 +326,17 @@ function AdminPanel({ s, setS, calc, approve, remove, markPaid }: any) {
       <button onClick={markPaid} disabled={calc.running <= 0} className="bg-grad-teal w-full rounded-2xl py-2.5 text-sm font-bold text-on-gradient disabled:opacity-40">
         Mark {tk(calc.running)} as Paid Out
       </button>
+      <div className="space-y-2">
+        <p className="text-sm font-semibold">Rates (BDT per $)</p>
+        <div className="grid grid-cols-3 gap-2">
+          {METHODS.map((m) => (
+            <label key={m.id} className="text-xs">{m.name}
+              <input type="number" value={s.rates?.[m.id] ?? m.rate} onChange={(e) => { const v = +e.target.value; if (v >= 0 && v < 10000) setS((p: State) => ({ ...p, rates: { ...p.rates, [m.id]: v } })); }} className="mt-1 w-full rounded-xl border bg-card px-2 py-1.5 text-sm" />
+            </label>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted-foreground">New rates apply to new entries.</p>
+      </div>
       <div className="space-y-2">
         <p className="text-sm font-semibold">Devices / Expiry</p>
         <div className="flex gap-2">
