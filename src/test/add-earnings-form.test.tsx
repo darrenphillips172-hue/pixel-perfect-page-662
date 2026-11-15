@@ -98,7 +98,8 @@ describe("Add Earnings form", () => {
       target: { files: [new File(["fake-image-bytes"], "proof.png", { type: "image/png" })] },
     });
 
-    // the 3 required fields still gate submit; the screenshot is optional
+    // wait for the preview thumbnail (async file read), then submit
+    await screen.findByAltText("Proof preview");
     expect(screen.getByRole("button", { name: "Submit (Pending)" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Submit (Pending)" }));
 
