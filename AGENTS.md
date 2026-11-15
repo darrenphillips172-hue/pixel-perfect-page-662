@@ -28,3 +28,8 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## Project rules
+- Users sign in only via Telegram: `telegramSignIn` server fn verifies WebApp initData with TELEGRAM_BOT_TOKEN, then issues a magic-link token the client verifies — never add an email/password screen. Why: identity must be the Telegram account.
+- Admin = `user_roles` row, granted automatically when Telegram ID equals ADMIN_TELEGRAM_ID. Why: no client-side admin checks.
+- Rate/status/paid on transactions are enforced by the `tx_guard` DB trigger; proof images live in the private `proofs` bucket under `<user_id>/`. Why: users can't tamper with balances or see others' proofs.
