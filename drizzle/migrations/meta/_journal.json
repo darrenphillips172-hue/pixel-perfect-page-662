@@ -8,6 +8,13 @@
       "when": 1794775876198,
       "tag": "0000_dollar_hisab_core",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794778080649,
+      "tag": "0001_weekly_bonus",
+      "breakpoints": true
     }
   ]
 }

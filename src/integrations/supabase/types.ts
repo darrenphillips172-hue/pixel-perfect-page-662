@@ -97,6 +97,7 @@ export type Database = {
       }
       transactions: {
         Row: {
+          bonus_week: string | null
           code: string
           created_at: string
           id: string
@@ -110,6 +111,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          bonus_week?: string | null
           code: string
           created_at?: string
           id?: string
@@ -123,6 +125,7 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          bonus_week?: string | null
           code?: string
           created_at?: string
           id?: string
